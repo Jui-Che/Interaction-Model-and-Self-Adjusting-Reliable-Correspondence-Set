@@ -1,4 +1,4 @@
-# MS-RANSAC
+# FMSAR
 Feature Matching via Self Adjusting Reliable
 Correspondence Set and Early Termination by Kuo-Liang Chung, and Jui-Che Chang
 
