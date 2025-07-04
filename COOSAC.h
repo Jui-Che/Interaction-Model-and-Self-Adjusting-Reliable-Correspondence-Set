@@ -5,128 +5,110 @@
 #include <vector>
 #include <unordered_set>
 #include <opencv2/opencv.hpp>
+#include <opencv2/calib3d.hpp>
 #include <Eigen/Dense>
 
 using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-class HomographyFourPointSolver {
+class OptimizedFundamentalMatrixSolver {
 public:
-	static cv::Mat solve(const std::vector<cv::Point2f>& src_pts,
-		const std::vector<cv::Point2f>& dst_pts,
-		const std::vector<int>& weights) {
-		if (src_pts.size() != dst_pts.size() || src_pts.size() < 4) {
-			throw std::invalid_argument("Invalid input: need at least 4 point pairs");
-		}
+    static cv::Mat solve(const std::vector<cv::Point2f>& src_pts,
+        const std::vector<cv::Point2f>& dst_pts,
+        const std::vector<int>& weights) {
+        if (src_pts.size() < 8) {
+            throw std::invalid_argument("Need at least 8 points for fundamental matrix");
+        }
 
-		std::vector<double> adjusted_weights;
-		adjustWeights(weights, adjusted_weights);
+        return solveFastOpenCV(src_pts, dst_pts, weights);
+    }
 
-		if (src_pts.size() == 4) {
-			return solveMinimal(src_pts, dst_pts, adjusted_weights);
-		}
-		else {
-			return solveNonMinimal(src_pts, dst_pts, adjusted_weights);
-		}
-	}
+    static void computeEpipolarErrorFast(const std::vector<cv::Point2f>& src_pts,
+        const std::vector<cv::Point2f>& dst_pts,
+        const cv::Mat& F,
+        std::vector<double>& errors) {
+        errors.clear();
+        errors.reserve(src_pts.size());
+
+        if (F.empty() || F.rows != 3 || F.cols != 3) {
+            errors.assign(src_pts.size(), 1000.0);
+            return;
+        }
+
+        for (size_t i = 0; i < src_pts.size(); ++i) {
+            double x1 = src_pts[i].x, y1 = src_pts[i].y;
+            double x2 = dst_pts[i].x, y2 = dst_pts[i].y;
+
+            double l2_x = F.at<double>(0, 0) * x1 + F.at<double>(0, 1) * y1 + F.at<double>(0, 2);
+            double l2_y = F.at<double>(1, 0) * x1 + F.at<double>(1, 1) * y1 + F.at<double>(1, 2);
+            double l2_z = F.at<double>(2, 0) * x1 + F.at<double>(2, 1) * y1 + F.at<double>(2, 2);
+
+            double denominator = sqrt(l2_x * l2_x + l2_y * l2_y);
+
+            if (denominator > 1e-8) {
+                double d = abs(l2_x * x2 + l2_y * y2 + l2_z) / denominator;
+                errors.push_back(d);
+            }
+            else {
+                errors.push_back(1000.0);  
+            }
+        }
+    }
 
 private:
-	static void adjustWeights(const std::vector<int>& original_weights, std::vector<double>& adjusted_weights) {
-		adjusted_weights.clear();
-		adjusted_weights.reserve(original_weights.size());
+    static cv::Mat solveFastOpenCV(const std::vector<cv::Point2f>& src_pts,
+        const std::vector<cv::Point2f>& dst_pts,
+        const std::vector<int>& weights) {
+        try {
+            std::vector<cv::Point2f> weighted_src, weighted_dst;
 
-		bool all_zero = std::all_of(original_weights.begin(), original_weights.end(), [](int w) { return w == 0; });
+            for (size_t i = 0; i < src_pts.size(); ++i) {
+                int weight = weights.empty() ? 1 : std::max(1, weights[i]);
+                weight = std::min(weight, 3);
 
-		if (all_zero) {
-			adjusted_weights.assign(original_weights.size(), 1.0);
-		}
-		else {
-			for (int w : original_weights) {
-				adjusted_weights.push_back(w == 0 ? 1e-6 : static_cast<double>(w));
-			}
-		}
-	}
-	static cv::Mat solveMinimal(const std::vector<cv::Point2f>& src_pts,
-		const std::vector<cv::Point2f>& dst_pts,
-		const std::vector<double>& weights) {
-		Eigen::Matrix<double, 8, 9> A;
+                for (int w = 0; w < weight; ++w) {
+                    weighted_src.push_back(src_pts[i]);
+                    weighted_dst.push_back(dst_pts[i]);
+                }
+            }
 
-		for (int i = 0; i < 4; ++i) {
-			double weight = weights.empty() ? 1.0 : static_cast<double>(weights[i]);
-			double x1 = src_pts[i].x, y1 = src_pts[i].y;
-			double x2 = dst_pts[i].x, y2 = dst_pts[i].y;
+            cv::Mat F = cv::findFundamentalMat(weighted_src, weighted_dst,
+                cv::FM_8POINT,
+                1.55, 0.995);
 
-			A.row(i * 2) << weight * x1, weight* y1, weight, 0, 0, 0, -weight * x2 * x1, -weight * x2 * y1, -weight * x2;
-			A.row(i * 2 + 1) << 0, 0, 0, weight* x1, weight* y1, weight, -weight * y2 * x1, -weight * y2 * y1, -weight * y2;
-		}
+            if (F.empty() || F.rows != 3 || F.cols != 3) {
+                F = cv::findFundamentalMat(src_pts, dst_pts, cv::FM_8POINT);
+            }
 
-		Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeFullV);
-		Eigen::VectorXd h = svd.matrixV().col(8);
-
-		cv::Mat H(3, 3, CV_64F);
-		double inv_h22 = 1.0 / h(8);
-		for (int i = 0; i < 3; ++i) {
-			for (int j = 0; j < 3; ++j) {
-				H.at<double>(i, j) = h(i * 3 + j) * inv_h22;
-			}
-		}
-
-		return H;
-	}
-
-	static cv::Mat solveNonMinimal(const std::vector<cv::Point2f>& src_pts,
-		const std::vector<cv::Point2f>& dst_pts,
-		const std::vector<double>& weights) {
-		int n = src_pts.size();
-		Eigen::MatrixXd A(2 * n, 9);
-		Eigen::VectorXd b(2 * n);
-
-		for (int i = 0; i < n; ++i) {
-			double weight = weights.empty() ? 1.0 : std::max(1e-8, static_cast<double>(weights[i]));
-			double x1 = src_pts[i].x, y1 = src_pts[i].y;
-			double x2 = dst_pts[i].x, y2 = dst_pts[i].y;
-			A.row(i * 2) << weight * x1, weight* y1, weight, 0, 0, 0, -weight * x2 * x1, -weight * x2 * y1, -weight * x2;
-			A.row(i * 2 + 1) << 0, 0, 0, weight* x1, weight* y1, weight, -weight * y2 * x1, -weight * y2 * y1, -weight * y2;
-			b(i * 2) = 0;
-			b(i * 2 + 1) = 0;
-		}
-		Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeFullV);
-		Eigen::VectorXd h = svd.matrixV().col(8);
-
-		cv::Mat H(3, 3, CV_64F);
-		double inv_h22 = 1.0 / h(8);
-		if (std::abs(h(8)) < 1e-8) {
-			std::cout << "Warning: h(8) is close to zero. Value: " << h(8) << std::endl;
-			inv_h22 = 0;
-		}
-
-		for (int i = 0; i < 3; ++i) {
-			for (int j = 0; j < 3; ++j) {
-				H.at<double>(i, j) = h(i * 3 + j) * inv_h22;
-				if (std::isnan(H.at<double>(i, j)) || std::isinf(H.at<double>(i, j))) {
-					std::cout << "Warning: NaN or Inf detected in H at (" << i << "," << j << ")" << std::endl;
-				}
-			}
-		}
-
-		return H;
-	}
+            return F;
+        }
+        catch (const std::exception& e) {
+            return cv::Mat();
+        }
+    }
 };
-struct homoinfo
+
+struct geometryinfo
 {
-	Mat H;
-	vector<int> inliers;
-	double final_iteration = 0;
-	double final_inlierRatio = 0;
+    Mat F; 
+    vector<int> inliers;
+    double final_iteration = 0;
+    double final_inlierRatio = 0;
 };
 
-constexpr std::array<std::array<int, 2>, 6> COMBINATIONS = { {
-	{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}
+constexpr std::array<std::array<int, 2>, 28> COMBINATIONS = { {
+    {0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6}, {0, 7},
+    {1, 2}, {1, 3}, {1, 4}, {1, 5}, {1, 6}, {1, 7},
+    {2, 3}, {2, 4}, {2, 5}, {2, 6}, {2, 7},
+    {3, 4}, {3, 5}, {3, 6}, {3, 7},
+    {4, 5}, {4, 6}, {4, 7},
+    {5, 6}, {5, 7},
+    {6, 7}
 } };
 
-homoinfo COOSAC(vector<Point2f>& init_src_pts, vector<Point2f>& init_tar_pts, vector<int>& ground_truth, vector<bool>& inliers_outliers_mask,
-	unordered_set<int>& compact_idx, double inlierThresh, double extractRate, vector<int>& ori_bin_idx, vector<int>& len_bin_idx, int& ori_bin_num, int& len_bin_num,
-	pair<int, int> high_idx, double compact_rate, vector<int>& weight, double sigmoid);
+geometryinfo COOSAC(vector<Point2f>& init_src_pts, vector<Point2f>& init_tar_pts, vector<int>& ground_truth, vector<bool>& inliers_outliers_mask,
+    unordered_set<int>& compact_idx, double inlierThresh, double extractRate, vector<int>& ori_bin_idx, vector<int>& len_bin_idx, int& ori_bin_num, int& len_bin_num,
+    pair<int, int> high_idx, double compact_rate, vector<int>& weight, double sigmoid);
 
 #endif // !COOSAC_H

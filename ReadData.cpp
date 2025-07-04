@@ -143,26 +143,44 @@ void load_file(string root, vector<string>& src_data, vector<string>& tar_data) 
 	return;
 }
 
+//void ReadDataName(string datasetName, vector<string>& dataset_1, vector<string>& dataset_2) {
+//
+//	if (datasetName == "Airport") {
+//		dataset_1 = { "IMG_0061.JPG","IMG_0116.JPG","IMG_0177.JPG","IMG_0282.JPG","IMG_3479.JPG" };
+//		dataset_2 = { "IMG_0062.JPG","IMG_0117.JPG","IMG_0178.JPG","IMG_0283.JPG","IMG_3480.JPG" };
+//	}
+//	else if (datasetName == "Small_Village") {
+//		dataset_1 = { "IMG_0924.JPG","IMG_0970.JPG","IMG_1011.JPG","IMG_1113.JPG","IMG_1204.JPG" };
+//		dataset_2 = { "IMG_0925.JPG","IMG_0971.JPG","IMG_1012.JPG","IMG_1114.JPG","IMG_1205.JPG" };
+//	}
+//	else if (datasetName == "University_Campus") {
+//		dataset_1 = { "IMG_0060.JPG","IMG_0098.JPG","IMG_0172.JPG","IMG_0333.JPG","IMG_0403.JPG" };
+//		dataset_2 = { "IMG_0061.JPG","IMG_0099.JPG","IMG_0173.JPG","IMG_0334.JPG","IMG_0404.JPG" };
+//	}
+//	else if (datasetName == "UAV") {
+//		load_file(".\\UAV\\", dataset_1, dataset_2);
+//	}
+//	else if (datasetName == "VGG") {
+//		load_file(".\\VGG\\", dataset_1, dataset_2);
+//	}
+//	else if (datasetName == "EVD") {
+//		load_file(".\\EVD\\", dataset_1, dataset_2);
+//	}
+//	else {
+//		cout << "You need to choose a dataset." << endl;
+//	}
+//}
+
+
 void ReadDataName(string datasetName, vector<string>& dataset_1, vector<string>& dataset_2) {
 
-	if (datasetName == "Airport") {
-		dataset_1 = { "IMG_0061.JPG","IMG_0116.JPG","IMG_0177.JPG","IMG_0282.JPG","IMG_3479.JPG" };
-		dataset_2 = { "IMG_0062.JPG","IMG_0117.JPG","IMG_0178.JPG","IMG_0283.JPG","IMG_3480.JPG" };
-	}
-	else if (datasetName == "Small_Village") {
-		dataset_1 = { "IMG_0924.JPG","IMG_0970.JPG","IMG_1011.JPG","IMG_1113.JPG","IMG_1204.JPG" };
-		dataset_2 = { "IMG_0925.JPG","IMG_0971.JPG","IMG_1012.JPG","IMG_1114.JPG","IMG_1205.JPG" };
-	}
-	else if (datasetName == "University_Campus") {
-		dataset_1 = { "IMG_0060.JPG","IMG_0098.JPG","IMG_0172.JPG","IMG_0333.JPG","IMG_0403.JPG" };
-		dataset_2 = { "IMG_0061.JPG","IMG_0099.JPG","IMG_0173.JPG","IMG_0334.JPG","IMG_0404.JPG" };
-	}
-	else if (datasetName == "UAV") {
+	if (datasetName == "UAV") {
 		load_file(".\\UAV\\", dataset_1, dataset_2);
 	}
 	else if (datasetName == "VGG") {
 		load_file(".\\VGG\\", dataset_1, dataset_2);
 	}
+	
 	else {
 		cout << "You need to choose a dataset." << endl;
 	}

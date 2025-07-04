@@ -2,6 +2,7 @@
 #include <opencv2/xfeatures2d/nonfree.hpp>
 #include <fstream>
 #include <numeric>
+#include <map>
 
 #include "ReadData.h"
 #include "SA_COOSAC.h"
@@ -13,7 +14,8 @@ using namespace std;
 int main(int argc, char* argv[]) {
 	/*------------ Select dataset & Load data ------------*/ 
 	// "Airport" "Small_Village" "University_Campus" "UAV" "VGG"
-	string dataset_name = "VGG";
+	string dataset_name = "UAV";
+
 
 	// Dataset inlier rate
 	//vector<float> adjust_inlier_rate = { 0.1 };
@@ -92,3 +94,5 @@ int main(int argc, char* argv[]) {
 
 	return 0;
 }
+
+

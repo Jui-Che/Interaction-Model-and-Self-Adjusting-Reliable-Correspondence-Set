@@ -105,10 +105,54 @@ unordered_set<int> GH_filter(vector<Point2f>& src_pts, vector<Point2f>& tar_pts,
 	return compact;
 }
 
+cal_RMSE calculateErrorMetrics_FM_Corrected(const vector<int>& ground_truth,
+	const vector<int>& inlier_mask,
+	const vector<Point2f>& src_pts,
+	const vector<Point2f>& tar_pts,
+	const Mat& F) {
+	vector<double> errors;
+	double sum_squared_error = 0.0;
+	double max_error = 0.0;
+	cal_RMSE cr;
+
+	if (F.empty() || F.rows != 3 || F.cols != 3) {
+		cr.RMSE = 1000.0;
+		cr.MAE = 1000.0;
+		cr.MEE = 1000.0;
+		return cr;
+	}
+
+	vector<double> all_errors;
+	OptimizedFundamentalMatrixSolver::computeEpipolarErrorFast(src_pts, tar_pts, F, all_errors);
+
+	for (size_t i = 0; i < ground_truth.size() && i < all_errors.size(); ++i) {
+		if (ground_truth[i] == 1) {  
+			double error = all_errors[i];
+			errors.push_back(error);
+			sum_squared_error += error * error;
+			max_error = max(max_error, error);
+		}
+	}
+
+	if (errors.size() > 0) {
+		cr.RMSE = sqrt(sum_squared_error / errors.size());
+		cr.MAE = max_error;
+		sort(errors.begin(), errors.end());
+		cr.MEE = errors[errors.size() / 2];
+	}
+	else {
+		cr.RMSE = 1000.0;
+		cr.MAE = 1000.0;
+		cr.MEE = 1000.0;
+	}
+
+	return cr;
+}
+
 vector<double> SA_COOSAC(vector<Point2f>& src_pts, vector<Point2f>& tar_pts, vector<int>& ground_truth, int repeat_time, Mat& sourceImg, Mat& targetImg)
 {
-	double default_Threshold = 4.5;
-	double extractRate = 0.4;
+	double default_Threshold = 1.55;  
+	double extractRate = 0.4;        
 	double recall_all = 0, precision_all = 0, f1_score_all = 0, time_all = 0, rmse_all = 0;
 
 	for (int times = 0; times < repeat_time; times++) {
@@ -133,14 +177,15 @@ vector<double> SA_COOSAC(vector<Point2f>& src_pts, vector<Point2f>& tar_pts, vec
 
 		pair<int, int> high_idx = { angel_peak , length_peak };
 
-		// COOSAC main function
-		homoinfo H_info = COOSAC(src_pts, tar_pts, ground_truth, inliers_outliers_mask, compact_idx, init_Threshold, extractRate, ori_bin_idx,
+		// COOSAC main function - fundamental
+		geometryinfo F_info = COOSAC(src_pts, tar_pts, ground_truth, inliers_outliers_mask, compact_idx, init_Threshold, extractRate, ori_bin_idx,
 			len_bin_idx, ori_bin_num, len_bin_num, high_idx, compact_rate, weight, epsilon);
+
 		stop = clock();
 		/*--------- End counts ---------*/
 		double total_time = ((double)stop - (double)start) / 1000;
 
-		vector<int> inlier_mask = H_info.inliers;
+		vector<int> inlier_mask = F_info.inliers;
 
 		confusion classification = confusion_matrix(ground_truth, inlier_mask);
 		double TP = classification.TP; double TN = classification.TN;
@@ -154,8 +199,8 @@ vector<double> SA_COOSAC(vector<Point2f>& src_pts, vector<Point2f>& tar_pts, vec
 		else
 			f1_score = 2 * precision * recall / (precision + recall);
 
-		cal_RMSE cal_rmse = calculateErrorMetrics(ground_truth, inlier_mask, src_pts, tar_pts, H_info.H);
-		
+		cal_RMSE cal_rmse = calculateErrorMetrics_FM_Corrected(ground_truth, inlier_mask, src_pts, tar_pts, F_info.F);
+	
 		recall_all += recall;
 		precision_all += precision;
 		f1_score_all += f1_score;
